@@ -1,21 +1,42 @@
 import 'dart:convert';
-import "package:http/http.dart" as http;
+import 'dart:io';
+import 'dart:async';
 
-Future<void> getBitcoinPrice() async {
-  final url = Uri.parse(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+void main() async {
+  final socket = await WebSocket.connect('wss://stream.binance.com:9443/ws/btcusdt@trade');
+  String? latestPrice;
+  int? previousIntPrice;
 
-  final responnse = await http.get(url);
+  Timer.periodic(Duration(seconds: 5), (_) {
+    if (latestPrice != null) {
+      final priceIntPart = int.tryParse(latestPrice!.split('.')[0]) ?? 0;
 
-  if (responnse.statusCode == 200) {
-    final data = jsonDecode(responnse.body);
-    final price = data['bitcoin']['usd'];
-    print("1 Bitcoin narxi: \$${price}");
-  } else {
-    print("Xatolik yuz berdi: ${responnse.statusCode}");
-  }
-}
+      final fiveDigit = priceIntPart.toString().padLeft(5, '0').substring(0, 5);
 
-void main(List<String> args) {
-  getBitcoinPrice();
+      String direction = '';
+      if (previousIntPrice != null) {
+        if (priceIntPart > previousIntPrice!) {
+          direction = '↑'; 
+        } else if (priceIntPart < previousIntPrice!) {
+          direction = '↓'; 
+        } else {
+          direction = '→';
+        }
+      }
+  
+      previousIntPrice = priceIntPart;
+
+      final now = DateTime.now().toLocal().toIso8601String();
+      print("[$now] BTC: $fiveDigit $direction");
+    }
+  });
+
+  socket.listen((data) {
+    final jsonData = jsonDecode(data);
+    latestPrice = jsonData['p'];
+  }, onError: (error) {
+    print("Xatolik: $error");
+  }, onDone: () {
+    print("Ulanish yopildi.");
+  });
 }
